@@ -47,5 +47,11 @@ def update_worker_status(worker: str, status: str):
     data.last_time_updated = time.time()
     workers[worker] = data
 
+def remove_zombies():
+    zombies = dict(filter(lambda kv: time.time() - kv[1].last_time_updated > 10, workers.items()))
+    for zombie in zombies:
+        print("remove zombie")
+        del workers[zombie] 
+
 def get_idle_workers() -> dict[str, WorkerData]:
     return dict(filter(lambda kv: kv[1].status == "idle", workers.items()))

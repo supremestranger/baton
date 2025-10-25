@@ -11,6 +11,7 @@ COUNT_PER_WORKER = 300
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
     asyncio.create_task(send_tasks())
+    asyncio.create_task(remove_zombies())
     yield
 
 async def send_tasks(period: float = 1):
@@ -46,6 +47,11 @@ async def send_task_to_workers(idle_workers: dict[str, db.WorkerData], task: db.
         if workers_available == 0:
             break
     return workers_available
+
+async def remove_zombies(period: float = 10):
+    while True:
+        db.remove_zombies()
+        await asyncio.sleep(period)
 
 app = fastapi.FastAPI(title="Master Node", lifespan=lifespan)
 

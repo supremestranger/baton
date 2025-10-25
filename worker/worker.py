@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import fastapi
 import argparse
+from datetime import datetime
 import uvicorn
 from contextlib import asynccontextmanager
 
@@ -20,7 +21,7 @@ async def send_status(period: float = 5):
         async with aiohttp.ClientSession() as s:
             try:
                 async with s.post(f"{master_host}/status", json={"status": status, "worker": port}) as resp:
-                    print("Sent my health check.")
+                    print(str(datetime.now().timestamp()) + " Sent my health check.")
             except Exception as e:
                 print(e)
         await asyncio.sleep(period)
