@@ -1,6 +1,8 @@
 import aiohttp
 import asyncio
 import fastapi
+import os
+import csv
 import argparse
 from datetime import datetime
 import uvicorn
@@ -26,17 +28,24 @@ async def send_status(period: float = 5):
                 print(e)
         await asyncio.sleep(period)
 
-async def run_code(code: str):
+async def run_code(code: str, data: str):
     global status
+    with open('./data.csv', 'w', newline='') as f:
+        f.flush()
+        f.writelines(data)
+    
     await asyncio.to_thread(exec, code) # blocking! to_thread
     status = "idle"
 
 @app.post("/")
 async def get_task(task: dict):
     global status
-    print(task["c"])
     status = "busy"
-    asyncio.create_task(run_code(task["c"]))
+    
+    data = task["d"]
+    code = task["c"]
+    asyncio.create_task(run_code(code, data))
+
     return {"ok"}
 
 def parse_arguments():
