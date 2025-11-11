@@ -100,15 +100,16 @@ async def get_status(status_req: StatusReq):
 async def receive_worker_result(result: WorkerResult):
     task_id = db.workers[result.worker].current_task
     
-    db.results[task_id][result.number] = result.data
+    # db.results[task_id][result.number] = result.data
 
-    print(f"Received result from worker {result.worker}, part {result.number}")
+    # print(f"Received result from worker {result.worker}, part {result.number}")
     
     return { "status": "success" }
 
 @app.get("/results/{task_id}")
 async def get_results(task_id):
     print(task_id)
+
 
 
 def verify_password(username: str, password: str) -> bool:

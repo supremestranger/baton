@@ -47,11 +47,11 @@ def create_task(code: str, data: str, rows: int):
         task = Task(TASK_ID, code, data, min(i + COUNT_PER_WORKER, rows), parts, "pending")
         new_tasks.append(task)
         parts += 1
+        TASK_ID += 1
     for task in new_tasks:
         task.parts = parts
         tasks.append(task)
     results[TASK_ID] = [[]] * parts # под каждый диапазон список
-    TASK_ID += 1
 
 def update_task(id: int, task: Task):
     tasks[id] = task

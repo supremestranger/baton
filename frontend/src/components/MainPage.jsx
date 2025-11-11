@@ -1,40 +1,83 @@
 import React, { useState } from 'react';
 
 const BatonPlatform = () => {
-  const [code, setCode] = useState(`# Ваш код для обработки данных
-# Входные данные в переменной df (DataFrame)
+  const [code, setCode] = useState(`import csv
+import math
 
-# Пример: вычисление статистик
-def process_data(df):
-    result = df.copy()
-    # Добавляем новые столбцы
-    result['sum'] = df.sum(axis=1)
-    result['mean'] = df.mean(axis=1)
-    result['std'] = df.std(axis=1)
-    return result
+with open('data.csv', 'r') as f:
+    reader = csv.reader(f)
+    data_rows = []
+    for row in reader:
+        numeric_row = [float(value) for value in row]
+        data_rows.append(numeric_row)
 
-output_df = process_data(df)`);
+results = []
+for row in data_rows:
+    N = len(row)
+    result_row = []
+    res = 0
+    for i in range(N):
+        res += row[i]
+    res /= N
+    result_row.append(res)
+    results.append(result_row)
 
-  const [inputData, setInputData] = useState(`A,B,C,D
-1,2,3,4
-5,6,7,8
-9,10,11,12
-13,14,15,16
-2,4,6,8
-1,3,5,7`);
+with open('res.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    for result_row in results:
+        writer.writerow(result_row)`);
+
+  const [inputData, setInputData] = useState(`4.5,3.5
+2.5,8.4`);
 
   const [outputData, setOutputData] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setOutputData('');
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setOutputData('');
+
+  try {
+    const credentials = localStorage.getItem('baton_credentials');
     
-    // Имитация обработки данных
+    // Вычисляем количество строк (исключаем заголовок)
+    const rowCount = Math.max(0, inputData.split('\n').length - 1);
+    
+    const response = await fetch('http://localhost:8080/task', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${credentials}`,
+      },
+      body: JSON.stringify({
+        code: code,
+        data: inputData,
+        rows: rowCount // автоматически вычисляем из inputData
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // const result = await response.json();
+    // console.log('Task created:', result);
+
+    // // Получаем task_id и начинаем опрашивать статус
+    // if (result.task_id) {
+    //   pollTaskStatus(result.task_id);
+    // } else {
+    //   throw new Error('No task_id in response');
+    // }
+
+  } catch (error) {
+    console.error('Error submitting task:', error);
+    setIsLoading(false);
+    setOutputData(`Ошибка: ${error.message}`);
+    
+    // Пока оставляем старый результат для демонстрации
     setTimeout(() => {
-      setIsLoading(false);
-      // Генерируем пример результата
       setOutputData(`A,B,C,D,sum,mean,std
 1,2,3,4,10,2.5,1.29
 5,6,7,8,26,6.5,1.29
@@ -42,37 +85,39 @@ output_df = process_data(df)`);
 13,14,15,16,58,14.5,1.29
 2,4,6,8,20,5.0,2.58
 1,3,5,7,16,4.0,2.58`);
-    }, 2000);
-  };
+    }, 500);
+  }
+};
 
   const handleRunExample = () => {
-    setCode(`# Кластеризация K-means
-from sklearn.cluster import KMeans
-import numpy as np
+    setCode(`import csv
+import math
 
-def process_data(df):
-    # Преобразуем данные для кластеризации
-    data = df.values
-    kmeans = KMeans(n_clusters=2, random_state=42)
-    clusters = kmeans.fit_predict(data)
-    
-    # Добавляем кластеры к результату
-    result = df.copy()
-    result['cluster'] = clusters
-    result['distance_to_center'] = np.min(kmeans.transform(data), axis=1)
-    return result
+with open('data.csv', 'r') as f:
+    reader = csv.reader(f)
+    data_rows = []
+    for row in reader:
+        numeric_row = [float(value) for value in row]
+        data_rows.append(numeric_row)
 
-output_df = process_data(df)`);
+results = []
+for row in data_rows:
+    N = len(row)
+    result_row = []
+    res = 0
+    for i in range(N):
+        res += row[i]
+    res /= N
+    result_row.append(res)
+    results.append(result_row)
+
+with open('res.csv', 'w', newline='') as f:
+    writer = csv.writer(f)
+    for result_row in results:
+        writer.writerow(result_row)`);
     
-    setInputData(`feature1,feature2,feature3
-1.2,2.3,0.8
-2.1,1.8,1.2
-5.6,6.1,5.9
-6.2,5.8,6.3
-10.1,11.2,9.8
-11.3,10.7,11.1
-1.5,2.1,1.1
-5.9,6.3,6.0`);
+    setInputData(`4.5,3.5
+2.5,8.4`);
   };
 
   const handleGenerateSampleData = () => {
