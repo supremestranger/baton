@@ -4,34 +4,37 @@ import fastapi
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import math
-import db
+from common import idents
+from common import db
 import uvicorn
 from pydantic import BaseModel
+import sys
+import os
 from contextlib import asynccontextmanager
 
-COUNT_PER_WORKER = 300
 API_KEY = "ajdjFK48!.wi$^erty$@"
 
 class TaskReq(BaseModel):
     code: str
     data: str # todo должно браться из субд
     rows: int
+    creator: str
 
 class StatusReq(BaseModel):
-    worker: int
+    worker: str
     current_task: int
-
-class ResReq(BaseModel):
-    res: str
-
-class UserRegister(BaseModel):
-    username: str
-    email: str
+    current_task_idx: int
 
 class WorkerResult(BaseModel):
-    worker: int
+    worker: str
     data: str  # CSV данные
+    id: int # коммон ид
+    number: int
+
+class ErrorReq(BaseModel):
+    worker: str
+    msg: str  # CSV данные
+    id: int # коммон ид
     number: int
 
 @asynccontextmanager
@@ -42,7 +45,7 @@ async def lifespan(app: fastapi.FastAPI):
 
 async def send_tasks(period: float = 1):
     while True:
-        pending_tasks = list(filter(lambda task: task.status == "pending", db.get_tasks()))
+        pending_tasks = list(filter(lambda task: task.status == idents.TaskStatus.PENDING, db.get_tasks()))
         print(f"Currently {len(pending_tasks)} tasks are pending.")
       
         idle_workers = list(db.get_idle_workers().keys())
@@ -51,9 +54,8 @@ async def send_tasks(period: float = 1):
                 break
             worker = idle_workers.pop()
             await send_task(worker, task)
-            task.status = "sent"
         
-            db.update_task(task.id, task)
+            db.update_task(task.common_id, task.idx, idents.TaskStatus.SENT)
         await asyncio.sleep(period) 
 
 async def remove_zombies(period: float = 10):
@@ -63,22 +65,21 @@ async def remove_zombies(period: float = 10):
 
 def create_app(lifespan):
     app = fastapi.FastAPI(title="Master Node", lifespan=lifespan)
-    app.add_middleware(
-        CORSMiddleware, allow_origins=["http://localhost:3000"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
     
     return app
 
 app = create_app(lifespan)
-
+app.add_middleware(
+        CORSMiddleware, allow_origins=["http://localhost:3000"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    )
 security = HTTPBasic()
 
 async def send_task(worker: int, task: db.Task):
-    db.update_worker_status(worker, task.id)
+    db.update_worker_status(worker, task.common_id, task.idx)
     async with aiohttp.ClientSession() as s:
         try:
             # compact plaintext JSON message ("c")
-            async with s.post("http://localhost:"+str(worker)+"/", json={"id": task.id, "c": task.code, "d": task.data, "n": task.number}) as resp: 
+            async with s.post("http://"+str(worker)+"/", json={"id": task.common_id, "idx": task.idx, "c": task.code, "d": task.data}) as resp: 
                 if resp.status == 200:
                     print("Task is sent successfully.")
         except Exception as e:
@@ -86,79 +87,69 @@ async def send_task(worker: int, task: db.Task):
 
 @app.post("/task")
 async def send_task_handler(task: TaskReq):
-    code = task.code
-    db.create_task(task.code, task.data, task.rows) # first save, then resp
-    print(f"Task with code: {code}.")
+    db.create_task(task.code, task.data, task.rows, task.creator) # first save, then resp
 
 @app.post("/status")
 async def get_status(status_req: StatusReq):
     worker = status_req.worker
     current_task = status_req.current_task
-    db.update_worker_status(worker, current_task)
+    current_task_idx = status_req.current_task_idx
+    
+    db.update_worker_status(worker, current_task, current_task_idx)
 
 @app.post("/results")
 async def receive_worker_result(result: WorkerResult):
     task_id = db.workers[result.worker].current_task
     
-    # db.results[task_id][result.number] = result.data
+    db.results[task_id][result.number] = result.data
 
-    # print(f"Received result from worker {result.worker}, part {result.number}")
+    print(f"Received result from worker {result.worker}, part {result.number}")
     
     return { "status": "success" }
 
+@app.get("/tasks")
+async def get_all_tasks():
+    return db.tasks
+
+@app.post("/error")
+async def task_error(error_req: ErrorReq):
+    db.create_error(error_req.id, error_req.msg)
+
+@app.get("/tasks/{user_id}")
+async def get_tasks_by_user(user_id: str):
+    result: dict[int, str] = {}
+    tasks = [task for task in db.tasks if task.creator == user_id]
+    for task in tasks:
+        task_results = None
+        if db.errors[task.common_id] != "":
+            result[task.common_id] = "failed"
+            continue
+
+        task_results = db.results[int(task.common_id)]
+
+        task_in_progress = [] in [result for result in task_results] # Very good code.
+        if task_in_progress:
+            result[task.common_id] = "running"
+        else:
+            result[task.common_id] = "done"
+    return result
+
 @app.get("/results/{task_id}")
 async def get_results(task_id):
-    print(task_id)
+    task_results = None
+    try:
+        task_results = db.results[int(task_id)]
+    except:
+        raise HTTPException(status_code=404, detail="Task not found!")
+    results = [result for result in task_results]
+    print(f"Results for {task_id}: {results}")
 
+    task_in_progress = [] in [result for result in task_results] # Very good code.
+    if task_in_progress:
+        raise HTTPException(status_code=400, detail="Task in progress!")
 
+    return "".join(results)
 
-def verify_password(username: str, password: str) -> bool:
-    if username in db.users_db:
-        return password == db.users_db[username]["password"]
-    return False
-
-def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
-    username = credentials.username
-    password = credentials.password
-    
-    if not verify_password(username, password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return username
-
-@app.get("/verify")
-async def verify_auth(user: str = Depends(get_current_user)):
-    return {"message": "Authenticated", "username": user}
-
-@app.post("/register")
-async def register_user(
-    credentials: HTTPBasicCredentials = Depends(security)
-):
-    username = credentials.username
-    password = credentials.password
-    
-    if username in db.users_db:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists"
-        )
-    
-    db.create_user(username, password)
-    
-    return {
-        "message": "User registered successfully", 
-        "username": username,
-    }
-
-@app.post("/login")
-async def login_user(user: str = Depends(get_current_user)):
-    return {
-        "message": "Login successful",
-        "username": user,
-    }
 
 if __name__ == "__main__":
     uvicorn.run(
