@@ -111,6 +111,10 @@ async def receive_worker_result(result: WorkerResult):
 async def get_all_tasks():
     return db.tasks
 
+@app.get("/results")
+async def get_all_results():
+    return db.results
+
 @app.post("/error")
 async def task_error(error_req: ErrorReq):
     db.create_error(error_req.id, error_req.msg)
